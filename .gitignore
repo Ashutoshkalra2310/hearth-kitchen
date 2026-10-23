@@ -1,0 +1,18 @@
+# OS / editors
+.DS_Store
+.idea/
+*.iml
+.vscode/
+
+# Backend (Maven / Kotlin)
+backend/target/
+backend/.kotlin/
+
+# Frontend (Node / Vite)
+frontend/node_modules/
+frontend/dist/
+
+# Local env files
+.env
+.env.*
+!.env.example
