@@ -10,6 +10,7 @@ classDiagram
         unit: BaseUnit
         onHand: BigDecimal
         reserved: BigDecimal
+        substituteId: Long?
         available() BigDecimal
         reserve(quantity)
         unreserve(quantity)
@@ -79,13 +80,14 @@ classDiagram
     OrderRequirement "*" ..> "1" Ingredient : ingredientId
     StockMovement "*" ..> "1" Ingredient : ingredientId
     StockMovement "*" ..> "0..1" ProductionOrder : orderId
+    Ingredient "*" ..> "0..1" Ingredient : substituteId
 ```
 
 Entities hold plain id columns, not JPA relationships (no `@ManyToOne`, `@OneToMany`, `@ManyToMany` or `@OneToOne`). Each arrow is a foreign key, enforced by the database. Services load related rows explicitly by id with repository queries.
 
 | Entity | Purpose |
 |---|---|
-| `Ingredient` | Current stock balance. `available = onHand - reserved` is computed, not stored. |
+| `Ingredient` | Current stock balance. `available = onHand - reserved` is computed, not stored. `substituteId` optionally names an ingredient to use instead (Butter → Margarine). |
 | `Recipe` | A product and its yield per batch (e.g. 12 loaves). |
 | `RecipeIngredient` | How much of one ingredient one batch needs. Unique per (recipe, ingredient). |
 | `ProductionOrder` | An order for N batches of a recipe, with its status and the time of each transition. |
@@ -95,6 +97,10 @@ Entities hold plain id columns, not JPA relationships (no `@ManyToOne`, `@OneToM
 ## Units
 
 All quantities are stored in the ingredient's `BaseUnit` (`G`, `ML`, `PCS`) as `NUMERIC(14,3)`, so recipe quantities (g, ml) and stock (kg, L) never need converting at calculation time. The UI shows stock in kg / L / pcs, as the brief's seed table does.
+
+## Substitutes
+
+An ingredient can name one substitute with the same unit, used 1:1 (migration `V3` sets Butter → Margarine). On release, each requirement is reserved from its own ingredient if that covers the full quantity, otherwise entirely from the substitute; if neither covers it, the release is rejected and nothing is reserved. The `RESERVE` movement records the ingredient actually used, and complete / cancel consume or free exactly what the order's `RESERVE` movements hold.
 
 ## Order lifecycle
 

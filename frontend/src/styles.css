@@ -99,6 +99,11 @@ th {
   color: #1a7f37;
 }
 
+.warn {
+  color: #9a6700;
+  font-weight: 600;
+}
+
 button,
 .button {
   display: inline-block;

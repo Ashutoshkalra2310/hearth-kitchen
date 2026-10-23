@@ -18,7 +18,7 @@ export default function CreateOrderPage() {
   const recipe = recipes.data?.find((r) => r.id === recipeId)
   const batchCount = Number(batches)
   const batchesValid = Number.isInteger(batchCount) && batchCount >= 1 && batchCount <= MAX_BATCHES
-  const availableById = new Map(stock.data?.map((i) => [i.id, i.available]))
+  const stockById = new Map(stock.data?.map((i) => [i.id, i]))
 
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -91,14 +91,25 @@ export default function CreateOrderPage() {
             <tbody>
               {recipe.lines.map((line) => {
                 const required = line.quantityPerBatch * batchCount
-                const available = availableById.get(line.ingredientId)
+                const ingredient = stockById.get(line.ingredientId)
+                const available = ingredient?.available
+                const substitute = ingredient?.substituteId ? stockById.get(ingredient.substituteId) : undefined
                 const short = available !== undefined && available < required
+                const substituteCovers = short && substitute !== undefined && substitute.available >= required
                 return (
                   <tr key={line.ingredientId}>
                     <td>{line.ingredientName}</td>
                     <td className="num">{formatQuantity(required, line.unit)}</td>
                     <td className="num">{available === undefined ? '…' : formatQuantity(available, line.unit)}</td>
-                    <td className={short ? 'short' : 'ok'}>{available === undefined ? '' : short ? 'Short' : 'OK'}</td>
+                    <td className={substituteCovers ? 'warn' : short ? 'short' : 'ok'}>
+                      {available === undefined
+                        ? ''
+                        : substituteCovers
+                          ? `Short, ${substitute.name} will be used`
+                          : short
+                            ? 'Short'
+                            : 'OK'}
+                    </td>
                   </tr>
                 )
               })}

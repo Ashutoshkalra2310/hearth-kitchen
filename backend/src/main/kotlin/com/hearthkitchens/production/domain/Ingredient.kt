@@ -24,6 +24,9 @@ class Ingredient(
     @Column(nullable = false)
     var reserved: BigDecimal = BigDecimal.ZERO,
 
+    /** Ingredient to use instead (same unit, 1:1) when this one can't cover a requirement. */
+    val substituteId: Long? = null,
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     var id: Long? = null,

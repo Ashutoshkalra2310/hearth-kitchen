@@ -14,6 +14,7 @@ export function Loading() {
 }
 
 export function ShortageTable({ shortages }: { shortages: Shortage[] }) {
+  const hasSubstitutes = shortages.some((s) => s.substituteName)
   return (
     <div className="panel panel-error">
       <strong>Release rejected: not enough stock. Nothing was reserved.</strong>
@@ -24,6 +25,7 @@ export function ShortageTable({ shortages }: { shortages: Shortage[] }) {
             <th className="num">Required</th>
             <th className="num">Available</th>
             <th className="num">Shortfall</th>
+            {hasSubstitutes && <th>Substitute</th>}
           </tr>
         </thead>
         <tbody>
@@ -33,6 +35,13 @@ export function ShortageTable({ shortages }: { shortages: Shortage[] }) {
               <td className="num">{formatQuantity(s.required, s.unit)}</td>
               <td className="num">{formatQuantity(s.available, s.unit)}</td>
               <td className="num short">{formatQuantity(s.shortfall, s.unit)}</td>
+              {hasSubstitutes && (
+                <td>
+                  {s.substituteName
+                    ? `${s.substituteName}: only ${formatQuantity(s.substituteAvailable ?? 0, s.unit)} available`
+                    : '—'}
+                </td>
+              )}
             </tr>
           ))}
         </tbody>

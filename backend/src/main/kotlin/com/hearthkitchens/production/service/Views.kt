@@ -23,6 +23,7 @@ data class IngredientStock(
     val onHand: BigDecimal,
     val reserved: BigDecimal,
     val available: BigDecimal,
+    val substituteId: Long?,
 )
 
 data class IngredientDetail(
@@ -72,6 +73,11 @@ data class RequirementView(
     val requiredQuantity: BigDecimal,
     /** Current available stock, so a draft order shows what would be short. */
     val available: BigDecimal,
+    /** Ingredient used instead (whole requirement, 1:1) when this one can't cover it. */
+    val substituteName: String?,
+    val substituteAvailable: BigDecimal?,
+    /** True once the order is released and the requirement was reserved from the substitute. */
+    val substituteUsed: Boolean,
 )
 
 data class RecipeView(
@@ -96,6 +102,9 @@ data class Shortage(
     val required: BigDecimal,
     val available: BigDecimal,
     val shortfall: BigDecimal,
+    /** Set when the ingredient has a substitute that couldn't cover the requirement either. */
+    val substituteName: String? = null,
+    val substituteAvailable: BigDecimal? = null,
 )
 
 fun Ingredient.toStock() = IngredientStock(
@@ -105,6 +114,7 @@ fun Ingredient.toStock() = IngredientStock(
     onHand = onHand,
     reserved = reserved,
     available = available,
+    substituteId = substituteId,
 )
 
 fun StockMovement.toView(ingredient: Ingredient) = MovementView(
@@ -143,13 +153,17 @@ fun ProductionOrder.toDetail(recipe: Recipe, requirements: List<RequirementView>
         movements = movements,
     )
 
-fun OrderRequirement.toView(ingredient: Ingredient) = RequirementView(
-    ingredientId = ingredientId,
-    ingredientName = ingredient.name,
-    unit = ingredient.unit,
-    requiredQuantity = requiredQuantity,
-    available = ingredient.available,
-)
+fun OrderRequirement.toView(ingredient: Ingredient, substitute: Ingredient?, substituteUsed: Boolean) =
+    RequirementView(
+        ingredientId = ingredientId,
+        ingredientName = ingredient.name,
+        unit = ingredient.unit,
+        requiredQuantity = requiredQuantity,
+        available = ingredient.available,
+        substituteName = substitute?.name,
+        substituteAvailable = substitute?.available,
+        substituteUsed = substituteUsed,
+    )
 
 fun RecipeIngredient.toView(ingredient: Ingredient) = RecipeLineView(
     ingredientId = ingredientId,

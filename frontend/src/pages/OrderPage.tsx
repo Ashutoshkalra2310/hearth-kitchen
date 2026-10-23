@@ -39,6 +39,7 @@ export default function OrderPage() {
   const ref = orderRef(order.id)
   const isDraft = order.status === 'DRAFT'
   const actionsDisabled = busy || confirming !== undefined
+  const showNotes = isDraft || order.requirements.some((r) => r.substituteUsed)
 
   return (
     <>
@@ -104,12 +105,13 @@ export default function OrderPage() {
             <th>Ingredient</th>
             <th className="num">Required</th>
             {isDraft && <th className="num">Available now</th>}
-            {isDraft && <th></th>}
+            {showNotes && <th></th>}
           </tr>
         </thead>
         <tbody>
           {order.requirements.map((r) => {
-            const short = r.available < r.requiredQuantity
+            const enough = r.available >= r.requiredQuantity
+            const substituteEnough = r.substituteAvailable !== null && r.substituteAvailable >= r.requiredQuantity
             return (
               <tr key={r.ingredientId}>
                 <td>
@@ -117,7 +119,16 @@ export default function OrderPage() {
                 </td>
                 <td className="num">{formatQuantity(r.requiredQuantity, r.unit)}</td>
                 {isDraft && <td className="num">{formatQuantity(r.available, r.unit)}</td>}
-                {isDraft && <td className={short ? 'short' : 'ok'}>{short ? 'Short' : 'OK'}</td>}
+                {showNotes && (
+                  <td>
+                    {!isDraft && r.substituteUsed && <span className="warn">Reserved from {r.substituteName}</span>}
+                    {isDraft && enough && <span className="ok">OK</span>}
+                    {isDraft && !enough && substituteEnough && (
+                      <span className="warn">Short, {r.substituteName} will be used</span>
+                    )}
+                    {isDraft && !enough && !substituteEnough && <span className="short">Short</span>}
+                  </td>
+                )}
               </tr>
             )
           })}

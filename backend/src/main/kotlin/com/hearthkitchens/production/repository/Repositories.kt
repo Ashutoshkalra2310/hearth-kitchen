@@ -17,18 +17,16 @@ interface IngredientRepository : JpaRepository<Ingredient, Long> {
     fun findAllByOrderByNameAsc(): List<Ingredient>
 
     /**
-     * Locks (SELECT ... FOR UPDATE) every ingredient the order needs, in id order so two
-     * transactions always lock in the same sequence and can't deadlock.
+     * Locks (SELECT ... FOR UPDATE) the given ingredients, in id order so two transactions
+     * always lock in the same sequence and can't deadlock.
      */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query(
-        """
-        select i from Ingredient i
-        where i.id in (select r.ingredientId from OrderRequirement r where r.orderId = :orderId)
-        order by i.id
-        """
-    )
-    fun lockAllRequiredBy(orderId: Long): List<Ingredient>
+    @Query("select i from Ingredient i where i.id in :ids order by i.id")
+    fun lockAllById(ids: Collection<Long>): List<Ingredient>
+
+    /** Substitute ids only (not entities), so nothing is loaded before it is locked. */
+    @Query("select i.substituteId from Ingredient i where i.id in :ids and i.substituteId is not null")
+    fun findSubstituteIds(ids: Collection<Long>): List<Long>
 }
 
 interface RecipeRepository : JpaRepository<Recipe, Long>

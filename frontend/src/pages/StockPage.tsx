@@ -6,6 +6,7 @@ import { useLoad } from '../useLoad'
 
 export default function StockPage() {
   const { data: stock, error } = useLoad(api.listStock, [])
+  const nameById = new Map(stock?.map((i) => [i.id, i.name]))
 
   return (
     <>
@@ -21,6 +22,7 @@ export default function StockPage() {
               <th className="num">On hand</th>
               <th className="num">Reserved</th>
               <th className="num">Available</th>
+              <th>Substitute</th>
             </tr>
           </thead>
           <tbody>
@@ -32,6 +34,7 @@ export default function StockPage() {
                 <td className="num">{formatQuantity(i.onHand, i.unit)}</td>
                 <td className="num">{formatQuantity(i.reserved, i.unit)}</td>
                 <td className={`num ${i.available === 0 ? 'short' : ''}`}>{formatQuantity(i.available, i.unit)}</td>
+                <td>{i.substituteId ? nameById.get(i.substituteId) : '—'}</td>
               </tr>
             ))}
           </tbody>

@@ -43,6 +43,10 @@ Every point where the brief was unclear or you had to choose between approaches.
 | 21 | Where the order status filter lives | Component state / URL query (`?status=`) | URL query | Survives reload and back/forward, linkable |
 | 22 | Showing why an ingredient's numbers are what they are | Store running balances / compute in UI | Ingredient page replays movements to show change and balance after each one | Keeps the table simple (decision 6) while still reading like a statement |
 | 23 | How entities refer to each other | JPA relationships (`@ManyToOne` / `@OneToMany`) / plain id columns | Plain id columns (`recipeId`, `ingredientId`, `orderId`); related rows loaded by id in the services | Simpler entities with no lazy loading or proxies, and every query is explicit. Foreign keys in the schema still enforce integrity |
+| 24 | Use margarine when butter is short: where is the rule? | Hard-code ids 3 → 11 / `substitute_id` column | `ingredient.substitute_id`, set by migration `V3` (by name, not id) | Works on a fresh database and for other ingredients later |
+| 25 | Butter only partly available | Split butter + margarine / swap the whole requirement | Swap the whole requirement to the substitute (same unit, 1:1) | One source per requirement; simple to show and explain |
+| 26 | What do complete / cancel act on once substitutes exist? | The requirements / what was actually reserved | The order's `RESERVE` movements | A requirement for butter may have been reserved as margarine; matches "consumes its reserved stock" |
+| 27 | Two requirements counting on the same stock (e.g. a shared substitute) | Check each against current stock / track remaining stock while planning | Plan all reservations first with a running `remaining` per ingredient, then reserve | Prevents over-promising the same stock twice |
 
 ## 3. Data model
 
@@ -68,6 +72,7 @@ Record the important interactions, especially where you rejected or changed what
 |---|---|---|---|
 | 1 | Make a UML of the backend entities | Class diagram where `StockMovement` also stored signed deltas and running balances (`onHandAfter`, `reservedAfter`) | Rejected the extra columns to keep it simple; type + quantity is enough to explain the stock |
 | 2 | Generate JPA entities for the data model | Entities linked with `@ManyToOne` and `@OneToMany` collections (recipe lines, order requirements) | Rejected the relationships; changed every link to a plain id column and load related rows with repository queries |
+| 3 | Plan using margarine when butter isn't available (my draft hard-coded ids 3 and 11 in `release()`) | Plan: `substitute_id` column, whole-requirement swap, complete/cancel from `RESERVE` movements; pointed out my draft would crash (margarine not loaded/locked) and still reserved butter | Chose the column and whole swap; replaced my draft with the planned version |
 
 **Parts I wrote or designed without AI:**
 
@@ -76,6 +81,7 @@ Record the important interactions, especially where you rejected or changed what
 | Problem | How I found it | Fix | Time lost |
 |---|---|---|---|
 | Complete and Cancel buttons did nothing; Release worked | Manual testing in the IDE's embedded browser. DB showed no status change; the endpoints answered correctly via curl; `window.confirm` returned `false` in 1 ms without showing a dialog | Replaced `window.confirm` with an on-page confirmation (Yes / Go back) | ~10 min |
+| Margarine added and eggs edited directly in the database | Margarine had no `OPENING` movement; eggs showed 200 but their history added up to 62 | Added margarine through migration `V3` (with its opening movement) and recreated the dev database | ~5 min |
 
 ## 6. Testing
 
@@ -101,6 +107,17 @@ REST API checked end to end with curl against a throwaway database (script not c
 |---|---|---|---|---|---|
 | 10 | Full order flow over HTTP | Create (201 + Location), release, short release (409 + shortages), list by status, complete, release+cancel, cancel draft, ingredient history | Correct status codes and stock numbers; Butter history shows OPENING, RESERVE, CONSUME, RESERVE, UNRESERVE | As expected | Pass |
 | 11 | Error responses | Unknown order / recipe / ingredient, complete a cancelled order, 0 batches, missing recipeId, malformed JSON, unknown status filter | 404 / 409 / 400 with a readable `detail` | As expected | Pass |
+
+Butter → margarine substitution checked over HTTP against a throwaway database with butter set to 1 kg (script not committed):
+
+| # | Scenario | Steps | Expected result | Actual result | Pass / Fail |
+|---|---|---|---|---|---|
+| 12 | Butter short, margarine enough | Brioche × 1 (1.2 kg butter), release | Margarine reserved; requirement marked as substituted; butter untouched | As expected | Pass |
+| 13 | Complete a substituted order | Complete #12 | Margarine consumed (5 → 3.8 kg); butter unchanged | As expected | Pass |
+| 14 | Butter enough | Sponge × 1 (0.8 kg), release, cancel | Butter reserved, then freed | As expected | Pass |
+| 15 | Cancel a substituted order | Brioche × 1, release, cancel | Margarine reserved, then freed | As expected | Pass |
+| 16 | Both short | Brioche × 4 (4.8 kg): butter 1 kg, margarine 3.8 kg | 409; Butter listed with margarine's availability; nothing reserved | As expected | Pass |
+| 17 | History still explains numbers | Replay all movements | All 11 ingredients match | As expected | Pass |
 
 ## 7. Unfinished work and known issues
 

@@ -1,6 +1,7 @@
 package com.hearthkitchens.production.service
 
 import com.hearthkitchens.production.domain.Ingredient
+import com.hearthkitchens.production.domain.MovementType
 import com.hearthkitchens.production.domain.OrderRequirement
 import com.hearthkitchens.production.domain.OrderStatus
 import com.hearthkitchens.production.domain.ProductionOrder
@@ -14,6 +15,7 @@ import com.hearthkitchens.production.repository.StockMovementRepository
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.math.BigDecimal
 import java.time.Instant
 
 /**
@@ -70,64 +72,79 @@ class ProductionOrderService(
     }
 
     /**
-     * Reserves every requirement, or nothing: if any ingredient is short, throws
-     * [InsufficientStockException] listing all the short ingredients.
+     * Reserves every requirement, or nothing. Each requirement is reserved from its own ingredient
+     * or, if that can't cover it, entirely from the ingredient's substitute. If any requirement
+     * can't be covered either way, throws [InsufficientStockException] listing all of them.
      */
     @Transactional
     fun release(orderId: Long): OrderDetail {
         val order = lockOrder(orderId)
         requireStatus(order, "release", OrderStatus.DRAFT)
-        val ingredients = lockIngredients(orderId)
         val requirements = requirementRepository.findAllForOrder(orderId)
+        val requiredIds = requirements.map { it.ingredientId }
+        val ingredients = lockIngredients(requiredIds + ingredientRepository.findSubstituteIds(requiredIds))
 
-        val shortages = requirements.mapNotNull { requirement ->
+        // Plan every reservation before changing anything. `remaining` tracks what's left of each
+        // ingredient, so two requirements can't both count on the same stock.
+        val remaining = ingredients.mapValues { it.value.available }.toMutableMap()
+        val reservations = mutableListOf<Pair<Ingredient, BigDecimal>>()
+        val shortages = mutableListOf<Shortage>()
+
+        for (requirement in requirements) {
+            val quantity = requirement.requiredQuantity
             val ingredient = ingredients.getValue(requirement.ingredientId)
-            if (ingredient.available >= requirement.requiredQuantity) return@mapNotNull null
-            Shortage(
-                ingredientId = requirement.ingredientId,
-                ingredientName = ingredient.name,
-                unit = ingredient.unit,
-                required = requirement.requiredQuantity,
-                available = ingredient.available,
-                shortfall = requirement.requiredQuantity - ingredient.available,
-            )
+            val substitute = usableSubstitute(ingredient, ingredients)
+            val source = listOfNotNull(ingredient, substitute).firstOrNull { remaining.getValue(it.id!!) >= quantity }
+
+            if (source == null) {
+                val available = remaining.getValue(ingredient.id!!)
+                shortages += Shortage(
+                    ingredientId = ingredient.id!!,
+                    ingredientName = ingredient.name,
+                    unit = ingredient.unit,
+                    required = quantity,
+                    available = available,
+                    shortfall = quantity - available,
+                    substituteName = substitute?.name,
+                    substituteAvailable = substitute?.let { remaining.getValue(it.id!!) },
+                )
+            } else {
+                remaining[source.id!!] = remaining.getValue(source.id!!) - quantity
+                reservations += source to quantity
+            }
         }
         if (shortages.isNotEmpty()) throw InsufficientStockException(orderId, shortages)
 
-        requirements.forEach {
-            stockService.reserve(ingredients.getValue(it.ingredientId), orderId, it.requiredQuantity)
-        }
+        reservations.forEach { (ingredient, quantity) -> stockService.reserve(ingredient, orderId, quantity) }
         order.status = OrderStatus.RELEASED
         order.releasedAt = Instant.now()
         return toDetail(order)
     }
 
-    /** Consumes the reserved stock. Reservation is all or nothing, so it equals the requirements. */
+    /** Consumes exactly what the order reserved (which may include substitutes). */
     @Transactional
     fun complete(orderId: Long): OrderDetail {
         val order = lockOrder(orderId)
         requireStatus(order, "complete", OrderStatus.RELEASED)
-        val ingredients = lockIngredients(orderId)
 
-        requirementRepository.findAllForOrder(orderId).forEach {
-            stockService.consume(ingredients.getValue(it.ingredientId), orderId, it.requiredQuantity)
-        }
+        val reserved = reservedMovements(orderId)
+        val ingredients = lockIngredients(reserved.map { it.ingredientId })
+        reserved.forEach { stockService.consume(ingredients.getValue(it.ingredientId), orderId, it.quantity) }
         order.status = OrderStatus.COMPLETED
         order.completedAt = Instant.now()
         return toDetail(order)
     }
 
-    /** Cancels a draft or released order, freeing anything a released order had reserved. */
+    /** Cancels a draft or released order, freeing exactly what a released order had reserved. */
     @Transactional
     fun cancel(orderId: Long): OrderDetail {
         val order = lockOrder(orderId)
         requireStatus(order, "cancel", OrderStatus.DRAFT, OrderStatus.RELEASED)
 
         if (order.status == OrderStatus.RELEASED) {
-            val ingredients = lockIngredients(orderId)
-            requirementRepository.findAllForOrder(orderId).forEach {
-                stockService.unreserve(ingredients.getValue(it.ingredientId), orderId, it.requiredQuantity)
-            }
+            val reserved = reservedMovements(orderId)
+            val ingredients = lockIngredients(reserved.map { it.ingredientId })
+            reserved.forEach { stockService.unreserve(ingredients.getValue(it.ingredientId), orderId, it.quantity) }
         }
         order.status = OrderStatus.CANCELLED
         order.cancelledAt = Instant.now()
@@ -137,9 +154,13 @@ class ProductionOrderService(
     private fun lockOrder(orderId: Long): ProductionOrder =
         orderRepository.findByIdForUpdate(orderId) ?: throw orderNotFound(orderId)
 
-    /** Locks the order's ingredient rows and returns them by id. */
-    private fun lockIngredients(orderId: Long): Map<Long, Ingredient> =
-        ingredientRepository.lockAllRequiredBy(orderId).associateBy { it.id!! }
+    /** Locks the ingredient rows and returns them by id. */
+    private fun lockIngredients(ids: Collection<Long>): Map<Long, Ingredient> =
+        ingredientRepository.lockAllById(ids.toSet()).associateBy { it.id!! }
+
+    /** What a released order is holding: its RESERVE movements. */
+    private fun reservedMovements(orderId: Long) =
+        movementRepository.findAllForOrder(orderId).filter { it.type == MovementType.RESERVE }
 
     private fun requireStatus(order: ProductionOrder, action: String, vararg allowed: OrderStatus) {
         if (order.status !in allowed) throw InvalidOrderStatusException(order.id!!, order.status, action)
@@ -151,15 +172,31 @@ class ProductionOrderService(
             ?: throw NotFoundException("Recipe ${order.recipeId} not found")
         val requirements = requirementRepository.findAllForOrder(orderId)
         val movements = movementRepository.findAllForOrder(orderId)
-        val ingredientIds = requirements.map { it.ingredientId } + movements.map { it.ingredientId }
+        val requiredIds = requirements.map { it.ingredientId }
+        val ingredientIds = requiredIds + movements.map { it.ingredientId } +
+            ingredientRepository.findSubstituteIds(requiredIds)
         val ingredients = ingredientRepository.findAllById(ingredientIds.toSet()).associateBy { it.id!! }
+        val reservedIds = movements.filter { it.type == MovementType.RESERVE }.map { it.ingredientId }.toSet()
 
         return order.toDetail(
             recipe = recipe,
-            requirements = requirements.map { it.toView(ingredients.getValue(it.ingredientId)) },
+            requirements = requirements.map { requirement ->
+                val ingredient = ingredients.getValue(requirement.ingredientId)
+                val substitute = usableSubstitute(ingredient, ingredients)
+                requirement.toView(
+                    ingredient = ingredient,
+                    substitute = substitute,
+                    substituteUsed = substitute != null &&
+                        requirement.ingredientId !in reservedIds && substitute.id in reservedIds,
+                )
+            },
             movements = movements.map { it.toView(ingredients.getValue(it.ingredientId)) },
         )
     }
+
+    /** The ingredient's substitute, if it has one with the same unit (substitutes are used 1:1). */
+    private fun usableSubstitute(ingredient: Ingredient, ingredients: Map<Long, Ingredient>): Ingredient? =
+        ingredient.substituteId?.let { ingredients[it] }?.takeIf { it.unit == ingredient.unit }
 
     private fun orderNotFound(orderId: Long) = NotFoundException("Order PO-$orderId not found")
 

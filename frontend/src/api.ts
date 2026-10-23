@@ -16,6 +16,8 @@ export interface IngredientStock {
   onHand: number
   reserved: number
   available: number
+  /** Ingredient used instead (whole requirement, 1:1) when this one is short. */
+  substituteId: number | null
 }
 
 export interface Movement {
@@ -63,6 +65,10 @@ export interface Requirement {
   unit: BaseUnit
   requiredQuantity: number
   available: number
+  substituteName: string | null
+  substituteAvailable: number | null
+  /** True once released, if the requirement was reserved from the substitute. */
+  substituteUsed: boolean
 }
 
 export interface OrderDetail {
@@ -88,6 +94,9 @@ export interface Shortage {
   required: number
   available: number
   shortfall: number
+  /** Set when the ingredient's substitute couldn't cover the requirement either. */
+  substituteName?: string | null
+  substituteAvailable?: number | null
 }
 
 /** Error from the API. `message` is the problem detail; `shortages` is set when a release is rejected. */
