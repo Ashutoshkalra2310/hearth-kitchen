@@ -7,7 +7,7 @@ classDiagram
     class Ingredient {
         id: Long
         name: String
-        unit: Unit
+        unit: BaseUnit
         onHand: BigDecimal
         reserved: BigDecimal
         available() BigDecimal
@@ -41,7 +41,7 @@ classDiagram
         quantity: BigDecimal
         createdAt: Instant
     }
-    class Unit {
+    class BaseUnit {
         <<enumeration>>
         G
         ML
@@ -82,7 +82,7 @@ classDiagram
 
 ## Units
 
-All quantities are stored in the base unit (`G`, `ML`, `PCS`) as `NUMERIC(14,3)`, so recipe quantities (g, ml) and stock (kg, L) never need converting at calculation time. The UI shows stock in kg / L / pcs, as the brief's seed table does.
+All quantities are stored in the ingredient's `BaseUnit` (`G`, `ML`, `PCS`) as `NUMERIC(14,3)`, so recipe quantities (g, ml) and stock (kg, L) never need converting at calculation time. The UI shows stock in kg / L / pcs, as the brief's seed table does.
 
 ## Order lifecycle
 
