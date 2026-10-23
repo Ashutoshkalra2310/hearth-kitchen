@@ -6,6 +6,7 @@ import com.hearthkitchens.production.domain.MovementType
 import com.hearthkitchens.production.domain.OrderRequirement
 import com.hearthkitchens.production.domain.OrderStatus
 import com.hearthkitchens.production.domain.ProductionOrder
+import com.hearthkitchens.production.domain.Recipe
 import com.hearthkitchens.production.domain.StockMovement
 import java.math.BigDecimal
 import java.time.Instant
@@ -71,6 +72,21 @@ data class RequirementView(
     val available: BigDecimal,
 )
 
+data class RecipeView(
+    val id: Long,
+    val name: String,
+    val yieldQuantity: BigDecimal,
+    val yieldUnit: String,
+    val lines: List<RecipeLineView>,
+)
+
+data class RecipeLineView(
+    val ingredientId: Long,
+    val ingredientName: String,
+    val unit: BaseUnit,
+    val quantityPerBatch: BigDecimal,
+)
+
 data class Shortage(
     val ingredientId: Long,
     val ingredientName: String,
@@ -122,6 +138,21 @@ fun ProductionOrder.toDetail(movements: List<MovementView>) = OrderDetail(
     cancelledAt = cancelledAt,
     requirements = requirements.map { it.toView() },
     movements = movements,
+)
+
+fun Recipe.toView() = RecipeView(
+    id = id!!,
+    name = name,
+    yieldQuantity = yieldQuantity,
+    yieldUnit = yieldUnit,
+    lines = lines.map {
+        RecipeLineView(
+            ingredientId = it.ingredient.id!!,
+            ingredientName = it.ingredient.name,
+            unit = it.ingredient.unit,
+            quantityPerBatch = it.quantityPerBatch,
+        )
+    },
 )
 
 fun OrderRequirement.toView() = RequirementView(

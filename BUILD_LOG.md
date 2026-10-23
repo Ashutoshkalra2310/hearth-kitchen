@@ -36,6 +36,8 @@ Every point where the brief was unclear or you had to choose between approaches.
 | 14 | Upper limit on batches | None / a cap | 1 to 1000 | Very large numbers would overflow `NUMERIC(14,3)` and fail with a database error |
 | 15 | Return entities or read models from services | Entities / read models | Read models (`OrderDetail`, `IngredientStock`, ...) built inside the transaction | `open-in-view` is off, so lazy relations must be loaded inside the service |
 | 16 | Where stock changes happen | In the order service / one stock service | Only `StockService` changes balances, and it always records the movement in the same call (`MANDATORY` transaction) | One place guarantees every balance change has a movement |
+| 17 | API error format | Ad-hoc JSON / RFC 9457 problem details | Problem details: 404 not found, 409 wrong status, 409 with a `shortages` list for a short release, 400 for invalid input | Built into Spring; the frontend reads one error shape |
+| 18 | Where the batches limit is checked | Request annotation and service / service only | Service checks the range; the request only checks the fields are present | One place defines the limit |
 
 ## 3. Data model
 
@@ -86,6 +88,13 @@ Service layer checked with a temporary integration test against a separate datab
 | 7 | Invalid transitions | Complete a draft; release / cancel a completed order | Rejected | As expected | Pass |
 | 8 | Invalid batches | Create with 0 batches | Rejected | As expected | Pass |
 | 9 | History explains balances | Replay every ingredient's movements | Equals current on hand and reserved | As expected | Pass |
+
+REST API checked end to end with curl against a throwaway database (script not committed):
+
+| # | Scenario | Steps | Expected result | Actual result | Pass / Fail |
+|---|---|---|---|---|---|
+| 10 | Full order flow over HTTP | Create (201 + Location), release, short release (409 + shortages), list by status, complete, release+cancel, cancel draft, ingredient history | Correct status codes and stock numbers; Butter history shows OPENING, RESERVE, CONSUME, RESERVE, UNRESERVE | As expected | Pass |
+| 11 | Error responses | Unknown order / recipe / ingredient, complete a cancelled order, 0 batches, missing recipeId, malformed JSON, unknown status filter | 404 / 409 / 400 with a readable `detail` | As expected | Pass |
 
 ## 7. Unfinished work and known issues
 
