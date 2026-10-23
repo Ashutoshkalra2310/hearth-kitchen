@@ -38,6 +38,10 @@ Every point where the brief was unclear or you had to choose between approaches.
 | 16 | Where stock changes happen | In the order service / one stock service | Only `StockService` changes balances, and it always records the movement in the same call (`MANDATORY` transaction) | One place guarantees every balance change has a movement |
 | 17 | API error format | Ad-hoc JSON / RFC 9457 problem details | Problem details: 404 not found, 409 wrong status, 409 with a `shortages` list for a short release, 400 for invalid input | Built into Spring; the frontend reads one error shape |
 | 18 | Where the batches limit is checked | Request annotation and service / service only | Service checks the range; the request only checks the fields are present | One place defines the limit |
+| 19 | Frontend libraries | UI kit + data-fetching library / plain React | React + React Router + `fetch`, plain CSS | Small app; less to explain; function over polish |
+| 20 | Calling the API from the dev server | CORS config in Spring / Vite proxy | Vite forwards `/api` to `localhost:8080` | Browser sees one origin, no CORS code |
+| 21 | Where the order status filter lives | Component state / URL query (`?status=`) | URL query | Survives reload and back/forward, linkable |
+| 22 | Showing why an ingredient's numbers are what they are | Store running balances / compute in UI | Ingredient page replays movements to show change and balance after each one | Keeps the table simple (decision 6) while still reading like a statement |
 
 ## 3. Data model
 
