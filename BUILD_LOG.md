@@ -32,6 +32,10 @@ Every point where the brief was unclear or you had to choose between approaches.
 | 10 | Does completing record actual usage? | Actual vs planned / consume exactly what was reserved | Consume exactly what was reserved | Not asked for in the brief |
 | 11 | Users and auth | Login / none | None, single user | Out of scope |
 | 12 | Order reference shown in UI | Separate order number / id | `PO-{id}` | No extra column needed |
+| 13 | Two requests touching the same stock (or a double-clicked Release) | No locking / optimistic `@Version` / row locks | Lock the order row, then its ingredient rows in id order (`SELECT ... FOR UPDATE`) at the start of release, complete and cancel | JPA writes balances computed in memory, so without locks two releases can overwrite each other's reservation (lost update) and the DB constraint won't notice. Fixed lock order prevents deadlocks |
+| 14 | Upper limit on batches | None / a cap | 1 to 1000 | Very large numbers would overflow `NUMERIC(14,3)` and fail with a database error |
+| 15 | Return entities or read models from services | Entities / read models | Read models (`OrderDetail`, `IngredientStock`, ...) built inside the transaction | `open-in-view` is off, so lazy relations must be loaded inside the service |
+| 16 | Where stock changes happen | In the order service / one stock service | Only `StockService` changes balances, and it always records the movement in the same call (`MANDATORY` transaction) | One place guarantees every balance change has a movement |
 
 ## 3. Data model
 
@@ -69,9 +73,19 @@ Record the important interactions, especially where you rejected or changed what
 
 At least five scenarios you tested, manually or with automated tests.
 
+Service layer checked with a temporary integration test against a separate database (not committed):
+
 | # | Scenario | Steps | Expected result | Actual result | Pass / Fail |
 |---|---|---|---|---|---|
-| | | | | | |
+| 1 | Create a draft order | Brioche × 2 | Draft with 7 requirements, Butter 2400 g | As expected | Pass |
+| 2 | Release with enough stock | Release the order above | Released; 7 `RESERVE` movements; Butter reserved 2400, available 5600 | As expected | Pass |
+| 3 | Release with shortages | Brioche × 5, release | Rejected; Butter (6000 / 5600 / 400) and Eggs (90 / 84 / 6) listed; order stays Draft; nothing reserved | As expected | Pass |
+| 4 | Complete | Complete order from #2 | Completed; 7 `CONSUME` movements; Butter on hand 5600, reserved 0 | As expected | Pass |
+| 5 | Cancel a released order | Sponge × 1, release, cancel | Cancelled; 5 `UNRESERVE` movements; reservation freed | As expected | Pass |
+| 6 | Cancel a draft | Cancel order from #3 | Cancelled; no movements | As expected | Pass |
+| 7 | Invalid transitions | Complete a draft; release / cancel a completed order | Rejected | As expected | Pass |
+| 8 | Invalid batches | Create with 0 batches | Rejected | As expected | Pass |
+| 9 | History explains balances | Replay every ingredient's movements | Equals current on hand and reserved | As expected | Pass |
 
 ## 7. Unfinished work and known issues
 

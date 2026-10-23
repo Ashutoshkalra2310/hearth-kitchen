@@ -12,6 +12,7 @@ import jakarta.persistence.Id
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.OneToMany
+import jakarta.persistence.OrderBy
 import java.math.BigDecimal
 import java.time.Instant
 
@@ -36,6 +37,7 @@ class ProductionOrder(
     var cancelledAt: Instant? = null,
 
     @OneToMany(mappedBy = "order", cascade = [CascadeType.ALL], orphanRemoval = true)
+    @OrderBy("id")
     val requirements: MutableList<OrderRequirement> = mutableListOf(),
 
     @Id

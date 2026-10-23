@@ -9,6 +9,7 @@ import jakarta.persistence.Id
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.OneToMany
+import jakarta.persistence.OrderBy
 import java.math.BigDecimal
 
 @Entity
@@ -23,6 +24,7 @@ class Recipe(
     val yieldUnit: String,
 
     @OneToMany(mappedBy = "recipe")
+    @OrderBy("id")
     val lines: MutableList<RecipeIngredient> = mutableListOf(),
 
     @Id

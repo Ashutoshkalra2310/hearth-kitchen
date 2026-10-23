@@ -30,4 +30,22 @@ class Ingredient(
 ) {
     val available: BigDecimal
         get() = onHand - reserved
+
+    // Balance changes. Callers must also record a StockMovement (see StockService).
+
+    fun reserve(quantity: BigDecimal) {
+        check(quantity <= available) { "Cannot reserve $quantity of $name: only $available available" }
+        reserved += quantity
+    }
+
+    fun unreserve(quantity: BigDecimal) {
+        check(quantity <= reserved) { "Cannot unreserve $quantity of $name: only $reserved reserved" }
+        reserved -= quantity
+    }
+
+    fun consume(quantity: BigDecimal) {
+        check(quantity <= reserved) { "Cannot consume $quantity of $name: only $reserved reserved" }
+        reserved -= quantity
+        onHand -= quantity
+    }
 }
