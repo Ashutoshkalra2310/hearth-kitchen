@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: hearth-kitchens-production
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/hearth_kitchens}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:}
+  jpa:
+    # Schema is owned by Flyway; Hibernate only checks the entities match it.
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+
+server:
+  port: 8080
