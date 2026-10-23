@@ -124,6 +124,12 @@ button.secondary {
   border-color: #d8dee4;
 }
 
+button.plain {
+  color: #1f2328;
+  background: #fff;
+  border-color: #d8dee4;
+}
+
 .title-row {
   display: flex;
   align-items: center;
@@ -199,6 +205,19 @@ button.secondary {
 
 .panel-error table {
   margin-top: 8px;
+}
+
+.panel-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  border-color: #54aeff;
+  background: #f1f8ff;
+}
+
+.panel-confirm span {
+  margin-right: 8px;
 }
 
 .summary {

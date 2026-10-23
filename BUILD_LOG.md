@@ -75,7 +75,7 @@ Record the important interactions, especially where you rejected or changed what
 
 | Problem | How I found it | Fix | Time lost |
 |---|---|---|---|
-| | | | |
+| Complete and Cancel buttons did nothing; Release worked | Manual testing in the IDE's embedded browser. DB showed no status change; the endpoints answered correctly via curl; `window.confirm` returned `false` in 1 ms without showing a dialog | Replaced `window.confirm` with an on-page confirmation (Yes / Go back) | ~10 min |
 
 ## 6. Testing
 

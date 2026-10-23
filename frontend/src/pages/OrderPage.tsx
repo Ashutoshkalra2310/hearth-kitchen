@@ -12,9 +12,12 @@ export default function OrderPage() {
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState<string>()
   const [shortages, setShortages] = useState<Shortage[]>([])
+  // Complete and cancel ask for confirmation on the page. window.confirm isn't used because
+  // some embedded browsers suppress it and return false, which silently skipped the action.
+  const [confirming, setConfirming] = useState<'complete' | 'cancel'>()
 
-  async function run(action: (id: number) => Promise<OrderDetail>, confirmText?: string) {
-    if (confirmText && !window.confirm(confirmText)) return
+  async function run(action: (id: number) => Promise<OrderDetail>) {
+    setConfirming(undefined)
     setBusy(true)
     setActionError(undefined)
     setShortages([])
@@ -35,6 +38,7 @@ export default function OrderPage() {
 
   const ref = orderRef(order.id)
   const isDraft = order.status === 'DRAFT'
+  const actionsDisabled = busy || confirming !== undefined
 
   return (
     <>
@@ -56,29 +60,17 @@ export default function OrderPage() {
 
       <div className="actions">
         {order.status === 'DRAFT' && (
-          <button disabled={busy} onClick={() => run(api.releaseOrder)}>
+          <button disabled={actionsDisabled} onClick={() => run(api.releaseOrder)}>
             Release
           </button>
         )}
         {order.status === 'RELEASED' && (
-          <button
-            disabled={busy}
-            onClick={() => run(api.completeOrder, `Complete ${ref}? This consumes its reserved stock.`)}
-          >
+          <button disabled={actionsDisabled} onClick={() => setConfirming('complete')}>
             Complete
           </button>
         )}
         {(order.status === 'DRAFT' || order.status === 'RELEASED') && (
-          <button
-            className="secondary"
-            disabled={busy}
-            onClick={() =>
-              run(
-                api.cancelOrder,
-                `Cancel ${ref}?${order.status === 'RELEASED' ? ' Its reserved stock will be freed.' : ''}`,
-              )
-            }
-          >
+          <button className="secondary" disabled={actionsDisabled} onClick={() => setConfirming('cancel')}>
             Cancel order
           </button>
         )}
@@ -86,6 +78,22 @@ export default function OrderPage() {
           <span className="muted">No further actions for a {order.status.toLowerCase()} order.</span>
         )}
       </div>
+
+      {confirming && (
+        <div className="panel panel-confirm">
+          <span>
+            {confirming === 'complete'
+              ? `Complete ${ref}? This consumes its reserved stock.`
+              : `Cancel ${ref}?${order.status === 'RELEASED' ? ' Its reserved stock will be freed.' : ''}`}
+          </span>
+          <button onClick={() => run(confirming === 'complete' ? api.completeOrder : api.cancelOrder)}>
+            {confirming === 'complete' ? 'Yes, complete' : 'Yes, cancel order'}
+          </button>
+          <button className="plain" onClick={() => setConfirming(undefined)}>
+            Go back
+          </button>
+        </div>
+      )}
 
       {shortages.length > 0 ? <ShortageTable shortages={shortages} /> : <ErrorMessage message={actionError} />}
 
