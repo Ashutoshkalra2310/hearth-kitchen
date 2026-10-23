@@ -11,6 +11,9 @@ classDiagram
         onHand: BigDecimal
         reserved: BigDecimal
         available() BigDecimal
+        reserve(quantity)
+        unreserve(quantity)
+        consume(quantity)
     }
     class Recipe {
         id: Long
