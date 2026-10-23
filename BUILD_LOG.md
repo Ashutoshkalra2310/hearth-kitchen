@@ -1,10 +1,10 @@
 # Build Log
 
-**Name:**
-**Repository URL:**
-**Start (date and time):**
-**End (date and time):**
-**Total working time:**
+**Name:** Ashutosh Kalra
+**Repository URL:** https://github.com/Ashutoshkalra2310/hearth-kitchen
+**Start (date and time):** 23 Oct 2026, 13:10 IST
+**End (date and time):** 23 Oct 2026, 17:00 IST
+**Total working time:** about 3 h 50 min (over the 3-hour timebox; about 45 min of it went on the butter → margarine extension, which isn't in the brief)
 
 ## 1. Timeline
 
@@ -12,7 +12,13 @@ One row per working block (roughly every 20–40 minutes).
 
 | Start | End | What I worked on | Outcome | AI tool used? |
 |---|---|---|---|---|
-| | | Read brief, chose stack, designed entity model | Data model in `docs/data-model.md` | Yes (Claude Code) |
+| 13:10 | 13:51 | Read brief, chose stack and database, designed the entity model, simplified stock movements to type + quantity | Data model in `docs/data-model.md`; repository started | Yes (Claude Code) |
+| 13:51 | 14:07 | Spring Boot skeleton, Flyway schema + seed, JPA entities, order/stock services with row locks, REST API | App runs on PostgreSQL; service and API checks pass | Yes (Claude Code) |
+| 14:07 | 14:40 | React frontend (orders, create order, order detail, stock, ingredient history); ran it locally; set up TablePlus | All five screens working against the backend | Yes (Claude Code) |
+| 14:40 | 15:10 | Reviewed entity relationships; removed `@OneToMany` / `@ManyToOne` in favour of plain id columns; added GitHub remote | Simpler entities, identical API behaviour | Yes (Claude Code) |
+| 15:10 | 15:55 | Manual UI testing; Complete / Cancel did nothing; debugged and fixed; reviewed ER and UML diagrams | On-page confirmation works; diagrams up to date | Yes (Claude Code) |
+| 15:55 | 16:40 | Extension: use margarine when butter is short (plan, migration, service, UI, tests); reset dev database | Substitution works end to end; 6 extra scenarios pass | Yes (Claude Code) |
+| 16:40 | 17:00 | Build log | This document | Yes (Claude Code) |
 
 ## 2. Decisions and assumptions
 
@@ -50,20 +56,20 @@ Every point where the brief was unclear or you had to choose between approaches.
 
 ## 3. Data model
 
-See `docs/data-model.md` for the diagram.
+See `docs/data-model.md` for the diagrams. Every relationship is a plain foreign key column; the entities hold ids, not JPA relationships.
 
 | Table | Purpose | Key columns | Relationships |
 |---|---|---|---|
-| `ingredient` | Current stock balance | `name`, `unit`, `on_hand`, `reserved` | — |
-| `recipe` | Product and yield per batch | `name`, `yield_quantity`, `yield_unit` | has many `recipe_ingredient` |
-| `recipe_ingredient` | Quantity of an ingredient per batch | `quantity_per_batch` | → `recipe`, → `ingredient` |
-| `production_order` | Order for N batches of a recipe | `batches`, `status`, timestamps | → `recipe`; has many `order_requirement` |
-| `order_requirement` | Snapshot of required quantity per ingredient | `required_quantity` | → `production_order`, → `ingredient` |
-| `stock_movement` | Append-only history of stock changes | `type`, `quantity`, `created_at` | → `ingredient`, → `production_order` (null for `OPENING`) |
+| `ingredient` | Current stock balance | `name`, `unit`, `on_hand`, `reserved`, `substitute_id` | `substitute_id` → `ingredient` (optional) |
+| `recipe` | Product and yield per batch | `name`, `yield_quantity`, `yield_unit` | — |
+| `recipe_ingredient` | Quantity of an ingredient per batch | `recipe_id`, `ingredient_id`, `quantity_per_batch` | → `recipe`, → `ingredient` |
+| `production_order` | Order for N batches of a recipe | `recipe_id`, `batches`, `status`, timestamps | → `recipe` |
+| `order_requirement` | Snapshot of required quantity per ingredient | `order_id`, `ingredient_id`, `required_quantity` | → `production_order`, → `ingredient` |
+| `stock_movement` | Append-only history of stock changes | `ingredient_id`, `order_id`, `type`, `quantity`, `created_at` | → `ingredient`, → `production_order` (null only for `OPENING`) |
 
 ## 4. AI tool usage
 
-**Tools used:** Claude Code
+**Tools used:** Claude Code (Claude Opus 5.5), in the Claude desktop app
 **Raw logs:** in the `ai-logs/` folder
 
 Record the important interactions, especially where you rejected or changed what the AI produced.
@@ -73,8 +79,18 @@ Record the important interactions, especially where you rejected or changed what
 | 1 | Make a UML of the backend entities | Class diagram where `StockMovement` also stored signed deltas and running balances (`onHandAfter`, `reservedAfter`) | Rejected the extra columns to keep it simple; type + quantity is enough to explain the stock |
 | 2 | Generate JPA entities for the data model | Entities linked with `@ManyToOne` and `@OneToMany` collections (recipe lines, order requirements) | Rejected the relationships; changed every link to a plain id column and load related rows with repository queries |
 | 3 | Plan using margarine when butter isn't available (my draft hard-coded ids 3 and 11 in `release()`) | Plan: `substitute_id` column, whole-requirement swap, complete/cancel from `RESERVE` movements; pointed out my draft would crash (margarine not loaded/locked) and still reserved butter | Chose the column and whole swap; replaced my draft with the planned version |
+| 4 | Build the service layer, with no optional extras | Also added row locks on the order and its ingredients | Kept: without them, two releases can overwrite each other's reservation (lost update). Not the optional concurrency extra: no concurrency test was written |
+| 5 | Build the order detail screen | Complete / Cancel asked for confirmation with `window.confirm` | Changed: the embedded browser suppresses `window.confirm`, so the buttons did nothing. Replaced with an on-page confirmation |
+| 6 | Start the frontend with the latest packages | Proposed Vite 8 and TypeScript 7 | Changed to Vite 7 and TypeScript 5.9: stable, widely known versions that are easier to explain |
 
 **Parts I wrote or designed without AI:**
+
+- Choice of stack (Kotlin + Spring Boot, React), PostgreSQL, and building step by step with a review after each step.
+- Keeping stock movements to type + quantity (no stored deltas or running balances).
+- Entities without JPA relationships (plain id columns).
+- The butter → margarine requirement, the first draft of it in `release()`, and the rules: a substitute column, swap the whole requirement.
+- Manual testing of the UI, which found the Complete / Cancel bug and the hand-edited egg and margarine stock.
+- The code itself was generated by Claude Code; I reviewed each step before moving on.
 
 ## 5. Problems and fixes
 
@@ -119,25 +135,45 @@ Butter → margarine substitution checked over HTTP against a throwaway database
 | 16 | Both short | Brioche × 4 (4.8 kg): butter 1 kg, margarine 3.8 kg | 409; Butter listed with margarine's availability; nothing reserved | As expected | Pass |
 | 17 | History still explains numbers | Replay all movements | All 11 ingredients match | As expected | Pass |
 
+Manual testing in the browser:
+
+| # | Scenario | Steps | Expected result | Actual result | Pass / Fail |
+|---|---|---|---|---|---|
+| 18 | Order flow through the UI | Create order, release, complete, cancel | Status and stock update on screen | Release worked; Complete / Cancel did nothing (`window.confirm` suppressed). Passed after the fix | Fail, then Pass |
+| 19 | On-page confirmation | Released order → Complete → panel appears → Go back | Panel shows; Go back leaves the order Released | As expected | Pass |
+
 ## 7. Unfinished work and known issues
 
 What doesn't work yet, shortcuts you took, and anything you would not ship as is.
 
--
+- **No automated tests in the repository.** Every scenario in section 6 was run, but with temporary scripts and a throwaway database, not committed tests.
+- **No way to add stock.** There is no receive-stock or adjustment movement or screen. Changing stock directly in the database breaks the "history explains the numbers" rule (this happened once with eggs).
+- **Substitution is hard to demo with the seed data.** 120 eggs cover exactly 8 kg of butter's worth of brioche, so any order big enough to need margarine is also short on eggs.
+- **Substitutes are simple.** One substitute per ingredient, 1:1, same unit, used for every recipe. No partial split (some butter plus some margarine).
+- **The concurrency handling is untested.** Row locks are in place, but no test runs two releases at the same moment.
+- **No Docker setup.** It runs locally only, with the frontend on the Vite dev server (no production build served by Spring).
+- **No authentication.** It is a single-user app.
+- **Numbers in the API.** Quantities are sent as JSON numbers, which is fine for these sizes; very large or very precise values would need strings.
 
 ## 8. Next steps
 
 What you would do next with more time, in priority order.
 
-1.
+1. Turn the temporary checks into committed integration tests (JUnit + a test PostgreSQL), including a test that runs two releases at once.
+2. Add a `RECEIVE` / `ADJUST` movement type and a screen to add stock, so stock changes never bypass the history.
+3. Raise a restock request automatically when a release is short (optional item in the brief).
+4. Docker Compose for PostgreSQL, backend and frontend.
+5. Per-recipe substitutes with a conversion ratio, and partial substitution if the kitchen wants it.
 
 ## 9. Time summary
 
 | Phase | Minutes |
 |---|---|
-| Understanding the brief and design | |
-| Database and backend | |
-| Frontend | |
-| Testing | |
-| README and build log | |
-| **Total** | |
+| Understanding the brief and design | 40 |
+| Database and backend (including the id-column refactor) | 45 |
+| Frontend (including the confirmation fix) | 30 |
+| Testing (automated checks and manual UI testing) | 35 |
+| Local setup, TablePlus and GitHub | 15 |
+| Butter → margarine extension (beyond the brief) | 45 |
+| README and build log | 20 |
+| **Total** | **230** |
