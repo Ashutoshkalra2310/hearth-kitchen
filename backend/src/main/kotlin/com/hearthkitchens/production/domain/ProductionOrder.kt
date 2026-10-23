@@ -1,26 +1,19 @@
 package com.hearthkitchens.production.domain
 
-import jakarta.persistence.CascadeType
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.EnumType
 import jakarta.persistence.Enumerated
-import jakarta.persistence.FetchType
 import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
-import jakarta.persistence.JoinColumn
-import jakarta.persistence.ManyToOne
-import jakarta.persistence.OneToMany
-import jakarta.persistence.OrderBy
 import java.math.BigDecimal
 import java.time.Instant
 
 @Entity
 class ProductionOrder(
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "recipe_id")
-    val recipe: Recipe,
+    @Column(nullable = false)
+    val recipeId: Long,
 
     @Column(nullable = false)
     val batches: Int,
@@ -36,10 +29,6 @@ class ProductionOrder(
     var completedAt: Instant? = null,
     var cancelledAt: Instant? = null,
 
-    @OneToMany(mappedBy = "order", cascade = [CascadeType.ALL], orphanRemoval = true)
-    @OrderBy("id")
-    val requirements: MutableList<OrderRequirement> = mutableListOf(),
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     var id: Long? = null,
@@ -47,13 +36,11 @@ class ProductionOrder(
 
 @Entity
 class OrderRequirement(
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "order_id")
-    val order: ProductionOrder,
+    @Column(nullable = false)
+    val orderId: Long,
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "ingredient_id")
-    val ingredient: Ingredient,
+    @Column(nullable = false)
+    val ingredientId: Long,
 
     @Column(nullable = false)
     val requiredQuantity: BigDecimal,

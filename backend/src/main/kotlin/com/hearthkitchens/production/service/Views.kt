@@ -7,12 +7,14 @@ import com.hearthkitchens.production.domain.OrderRequirement
 import com.hearthkitchens.production.domain.OrderStatus
 import com.hearthkitchens.production.domain.ProductionOrder
 import com.hearthkitchens.production.domain.Recipe
+import com.hearthkitchens.production.domain.RecipeIngredient
 import com.hearthkitchens.production.domain.StockMovement
 import java.math.BigDecimal
 import java.time.Instant
 
-// Read models returned by the services. Built inside a transaction so lazy
-// relations are loaded before they leave the service. All quantities are in `unit`.
+// Read models returned by the services. Entities only hold ids of related rows, so the
+// mapping functions take the related entities (e.g. the ingredient for its name and unit).
+// All quantities are in `unit`.
 
 data class IngredientStock(
     val id: Long,
@@ -105,18 +107,18 @@ fun Ingredient.toStock() = IngredientStock(
     available = available,
 )
 
-fun StockMovement.toView() = MovementView(
+fun StockMovement.toView(ingredient: Ingredient) = MovementView(
     id = id!!,
     type = type,
     quantity = quantity,
     createdAt = createdAt,
-    ingredientId = ingredient.id!!,
+    ingredientId = ingredientId,
     ingredientName = ingredient.name,
     unit = ingredient.unit,
-    orderId = order?.id,
+    orderId = orderId,
 )
 
-fun ProductionOrder.toSummary() = OrderSummary(
+fun ProductionOrder.toSummary(recipe: Recipe) = OrderSummary(
     id = id!!,
     recipeName = recipe.name,
     batches = batches,
@@ -124,41 +126,42 @@ fun ProductionOrder.toSummary() = OrderSummary(
     createdAt = createdAt,
 )
 
-fun ProductionOrder.toDetail(movements: List<MovementView>) = OrderDetail(
-    id = id!!,
-    recipeId = recipe.id!!,
-    recipeName = recipe.name,
-    yieldQuantity = recipe.yieldQuantity,
-    yieldUnit = recipe.yieldUnit,
-    batches = batches,
-    status = status,
-    createdAt = createdAt,
-    releasedAt = releasedAt,
-    completedAt = completedAt,
-    cancelledAt = cancelledAt,
-    requirements = requirements.map { it.toView() },
-    movements = movements,
-)
+fun ProductionOrder.toDetail(recipe: Recipe, requirements: List<RequirementView>, movements: List<MovementView>) =
+    OrderDetail(
+        id = id!!,
+        recipeId = recipeId,
+        recipeName = recipe.name,
+        yieldQuantity = recipe.yieldQuantity,
+        yieldUnit = recipe.yieldUnit,
+        batches = batches,
+        status = status,
+        createdAt = createdAt,
+        releasedAt = releasedAt,
+        completedAt = completedAt,
+        cancelledAt = cancelledAt,
+        requirements = requirements,
+        movements = movements,
+    )
 
-fun Recipe.toView() = RecipeView(
-    id = id!!,
-    name = name,
-    yieldQuantity = yieldQuantity,
-    yieldUnit = yieldUnit,
-    lines = lines.map {
-        RecipeLineView(
-            ingredientId = it.ingredient.id!!,
-            ingredientName = it.ingredient.name,
-            unit = it.ingredient.unit,
-            quantityPerBatch = it.quantityPerBatch,
-        )
-    },
-)
-
-fun OrderRequirement.toView() = RequirementView(
-    ingredientId = ingredient.id!!,
+fun OrderRequirement.toView(ingredient: Ingredient) = RequirementView(
+    ingredientId = ingredientId,
     ingredientName = ingredient.name,
     unit = ingredient.unit,
     requiredQuantity = requiredQuantity,
     available = ingredient.available,
+)
+
+fun RecipeIngredient.toView(ingredient: Ingredient) = RecipeLineView(
+    ingredientId = ingredientId,
+    ingredientName = ingredient.name,
+    unit = ingredient.unit,
+    quantityPerBatch = quantityPerBatch,
+)
+
+fun Recipe.toView(lines: List<RecipeLineView>) = RecipeView(
+    id = id!!,
+    name = name,
+    yieldQuantity = yieldQuantity,
+    yieldUnit = yieldUnit,
+    lines = lines,
 )

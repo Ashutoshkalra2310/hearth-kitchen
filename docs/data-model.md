@@ -20,10 +20,13 @@ classDiagram
     }
     class RecipeIngredient {
         id: Long
+        recipeId: Long
+        ingredientId: Long
         quantityPerBatch: BigDecimal
     }
     class ProductionOrder {
         id: Long
+        recipeId: Long
         batches: Int
         status: OrderStatus
         createdAt: Instant
@@ -33,10 +36,14 @@ classDiagram
     }
     class OrderRequirement {
         id: Long
+        orderId: Long
+        ingredientId: Long
         requiredQuantity: BigDecimal
     }
     class StockMovement {
         id: Long
+        ingredientId: Long
+        orderId: Long?
         type: MovementType
         quantity: BigDecimal
         createdAt: Instant
@@ -62,14 +69,16 @@ classDiagram
         CONSUME
     }
 
-    Recipe "1" *-- "1..*" RecipeIngredient : lines
-    RecipeIngredient "*" --> "1" Ingredient
-    ProductionOrder "*" --> "1" Recipe
-    ProductionOrder "1" *-- "1..*" OrderRequirement : requirements
-    OrderRequirement "*" --> "1" Ingredient
-    StockMovement "*" --> "1" Ingredient
-    StockMovement "*" --> "0..1" ProductionOrder
+    RecipeIngredient "*" ..> "1" Recipe : recipeId
+    RecipeIngredient "*" ..> "1" Ingredient : ingredientId
+    ProductionOrder "*" ..> "1" Recipe : recipeId
+    OrderRequirement "*" ..> "1" ProductionOrder : orderId
+    OrderRequirement "*" ..> "1" Ingredient : ingredientId
+    StockMovement "*" ..> "1" Ingredient : ingredientId
+    StockMovement "*" ..> "0..1" ProductionOrder : orderId
 ```
+
+Entities hold plain id columns, not JPA relationships (no `@ManyToOne`, `@OneToMany`, `@ManyToMany` or `@OneToOne`). Each arrow is a foreign key, enforced by the database. Services load related rows explicitly by id with repository queries.
 
 | Entity | Purpose |
 |---|---|

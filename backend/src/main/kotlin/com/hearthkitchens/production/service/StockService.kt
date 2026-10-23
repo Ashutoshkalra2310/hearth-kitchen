@@ -2,7 +2,6 @@ package com.hearthkitchens.production.service
 
 import com.hearthkitchens.production.domain.Ingredient
 import com.hearthkitchens.production.domain.MovementType
-import com.hearthkitchens.production.domain.ProductionOrder
 import com.hearthkitchens.production.domain.StockMovement
 import com.hearthkitchens.production.repository.IngredientRepository
 import com.hearthkitchens.production.repository.StockMovementRepository
@@ -30,7 +29,7 @@ class StockService(
     fun getIngredient(ingredientId: Long): IngredientDetail {
         val ingredient = ingredientRepository.findByIdOrNull(ingredientId)
             ?: throw NotFoundException("Ingredient $ingredientId not found")
-        val movements = movementRepository.findAllForIngredient(ingredientId).map { it.toView() }
+        val movements = movementRepository.findAllForIngredient(ingredientId).map { it.toView(ingredient) }
         return IngredientDetail(ingredient.toStock(), movements)
     }
 
@@ -38,24 +37,26 @@ class StockService(
     // balance change, the movement and the order's status change commit or roll back together.
 
     @Transactional(propagation = Propagation.MANDATORY)
-    fun reserve(ingredient: Ingredient, order: ProductionOrder, quantity: BigDecimal) {
+    fun reserve(ingredient: Ingredient, orderId: Long, quantity: BigDecimal) {
         ingredient.reserve(quantity)
-        record(ingredient, order, MovementType.RESERVE, quantity)
+        record(ingredient, orderId, MovementType.RESERVE, quantity)
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
-    fun unreserve(ingredient: Ingredient, order: ProductionOrder, quantity: BigDecimal) {
+    fun unreserve(ingredient: Ingredient, orderId: Long, quantity: BigDecimal) {
         ingredient.unreserve(quantity)
-        record(ingredient, order, MovementType.UNRESERVE, quantity)
+        record(ingredient, orderId, MovementType.UNRESERVE, quantity)
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
-    fun consume(ingredient: Ingredient, order: ProductionOrder, quantity: BigDecimal) {
+    fun consume(ingredient: Ingredient, orderId: Long, quantity: BigDecimal) {
         ingredient.consume(quantity)
-        record(ingredient, order, MovementType.CONSUME, quantity)
+        record(ingredient, orderId, MovementType.CONSUME, quantity)
     }
 
-    private fun record(ingredient: Ingredient, order: ProductionOrder, type: MovementType, quantity: BigDecimal) {
-        movementRepository.save(StockMovement(ingredient = ingredient, order = order, type = type, quantity = quantity))
+    private fun record(ingredient: Ingredient, orderId: Long, type: MovementType, quantity: BigDecimal) {
+        movementRepository.save(
+            StockMovement(ingredientId = ingredient.id!!, orderId = orderId, type = type, quantity = quantity)
+        )
     }
 }

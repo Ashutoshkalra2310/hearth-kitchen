@@ -42,6 +42,7 @@ Every point where the brief was unclear or you had to choose between approaches.
 | 20 | Calling the API from the dev server | CORS config in Spring / Vite proxy | Vite forwards `/api` to `localhost:8080` | Browser sees one origin, no CORS code |
 | 21 | Where the order status filter lives | Component state / URL query (`?status=`) | URL query | Survives reload and back/forward, linkable |
 | 22 | Showing why an ingredient's numbers are what they are | Store running balances / compute in UI | Ingredient page replays movements to show change and balance after each one | Keeps the table simple (decision 6) while still reading like a statement |
+| 23 | How entities refer to each other | JPA relationships (`@ManyToOne` / `@OneToMany`) / plain id columns | Plain id columns (`recipeId`, `ingredientId`, `orderId`); related rows loaded by id in the services | Simpler entities with no lazy loading or proxies, and every query is explicit. Foreign keys in the schema still enforce integrity |
 
 ## 3. Data model
 
@@ -66,6 +67,7 @@ Record the important interactions, especially where you rejected or changed what
 | # | What I asked the AI | What it produced | What I kept, changed or rejected, and why |
 |---|---|---|---|
 | 1 | Make a UML of the backend entities | Class diagram where `StockMovement` also stored signed deltas and running balances (`onHandAfter`, `reservedAfter`) | Rejected the extra columns to keep it simple; type + quantity is enough to explain the stock |
+| 2 | Generate JPA entities for the data model | Entities linked with `@ManyToOne` and `@OneToMany` collections (recipe lines, order requirements) | Rejected the relationships; changed every link to a plain id column and load related rows with repository queries |
 
 **Parts I wrote or designed without AI:**
 

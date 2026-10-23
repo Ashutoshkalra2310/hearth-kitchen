@@ -1,9 +1,11 @@
 package com.hearthkitchens.production.repository
 
 import com.hearthkitchens.production.domain.Ingredient
+import com.hearthkitchens.production.domain.OrderRequirement
 import com.hearthkitchens.production.domain.OrderStatus
 import com.hearthkitchens.production.domain.ProductionOrder
 import com.hearthkitchens.production.domain.Recipe
+import com.hearthkitchens.production.domain.RecipeIngredient
 import com.hearthkitchens.production.domain.StockMovement
 import jakarta.persistence.LockModeType
 import org.springframework.data.jpa.repository.JpaRepository
@@ -22,7 +24,7 @@ interface IngredientRepository : JpaRepository<Ingredient, Long> {
     @Query(
         """
         select i from Ingredient i
-        where i.id in (select r.ingredient.id from OrderRequirement r where r.order.id = :orderId)
+        where i.id in (select r.ingredientId from OrderRequirement r where r.orderId = :orderId)
         order by i.id
         """
     )
@@ -31,13 +33,23 @@ interface IngredientRepository : JpaRepository<Ingredient, Long> {
 
 interface RecipeRepository : JpaRepository<Recipe, Long>
 
+interface RecipeIngredientRepository : JpaRepository<RecipeIngredient, Long> {
+
+    @Query("select l from RecipeIngredient l where l.recipeId = :recipeId order by l.id")
+    fun findAllForRecipe(recipeId: Long): List<RecipeIngredient>
+}
+
+interface OrderRequirementRepository : JpaRepository<OrderRequirement, Long> {
+
+    @Query("select r from OrderRequirement r where r.orderId = :orderId order by r.id")
+    fun findAllForOrder(orderId: Long): List<OrderRequirement>
+}
+
 interface ProductionOrderRepository : JpaRepository<ProductionOrder, Long> {
 
-    @Query("select o from ProductionOrder o join fetch o.recipe order by o.id desc")
-    fun findAllWithRecipe(): List<ProductionOrder>
+    fun findAllByOrderByIdDesc(): List<ProductionOrder>
 
-    @Query("select o from ProductionOrder o join fetch o.recipe where o.status = :status order by o.id desc")
-    fun findAllWithRecipeByStatus(status: OrderStatus): List<ProductionOrder>
+    fun findAllByStatusOrderByIdDesc(status: OrderStatus): List<ProductionOrder>
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select o from ProductionOrder o where o.id = :id")
@@ -46,9 +58,9 @@ interface ProductionOrderRepository : JpaRepository<ProductionOrder, Long> {
 
 interface StockMovementRepository : JpaRepository<StockMovement, Long> {
 
-    @Query("select m from StockMovement m join fetch m.ingredient where m.order.id = :orderId order by m.id")
+    @Query("select m from StockMovement m where m.orderId = :orderId order by m.id")
     fun findAllForOrder(orderId: Long): List<StockMovement>
 
-    @Query("select m from StockMovement m left join fetch m.order where m.ingredient.id = :ingredientId order by m.id")
+    @Query("select m from StockMovement m where m.ingredientId = :ingredientId order by m.id")
     fun findAllForIngredient(ingredientId: Long): List<StockMovement>
 }

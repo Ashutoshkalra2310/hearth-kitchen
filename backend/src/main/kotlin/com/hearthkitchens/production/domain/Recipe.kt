@@ -2,14 +2,9 @@ package com.hearthkitchens.production.domain
 
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
-import jakarta.persistence.FetchType
 import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
-import jakarta.persistence.JoinColumn
-import jakarta.persistence.ManyToOne
-import jakarta.persistence.OneToMany
-import jakarta.persistence.OrderBy
 import java.math.BigDecimal
 
 @Entity
@@ -23,10 +18,6 @@ class Recipe(
     @Column(nullable = false)
     val yieldUnit: String,
 
-    @OneToMany(mappedBy = "recipe")
-    @OrderBy("id")
-    val lines: MutableList<RecipeIngredient> = mutableListOf(),
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     var id: Long? = null,
@@ -34,13 +25,11 @@ class Recipe(
 
 @Entity
 class RecipeIngredient(
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "recipe_id")
-    val recipe: Recipe,
+    @Column(nullable = false)
+    val recipeId: Long,
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "ingredient_id")
-    val ingredient: Ingredient,
+    @Column(nullable = false)
+    val ingredientId: Long,
 
     @Column(nullable = false)
     val quantityPerBatch: BigDecimal,

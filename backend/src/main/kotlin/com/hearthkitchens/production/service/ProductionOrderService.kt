@@ -1,10 +1,14 @@
 package com.hearthkitchens.production.service
 
+import com.hearthkitchens.production.domain.Ingredient
 import com.hearthkitchens.production.domain.OrderRequirement
 import com.hearthkitchens.production.domain.OrderStatus
 import com.hearthkitchens.production.domain.ProductionOrder
+import com.hearthkitchens.production.domain.Recipe
 import com.hearthkitchens.production.repository.IngredientRepository
+import com.hearthkitchens.production.repository.OrderRequirementRepository
 import com.hearthkitchens.production.repository.ProductionOrderRepository
+import com.hearthkitchens.production.repository.RecipeIngredientRepository
 import com.hearthkitchens.production.repository.RecipeRepository
 import com.hearthkitchens.production.repository.StockMovementRepository
 import org.springframework.data.repository.findByIdOrNull
@@ -22,7 +26,9 @@ import java.time.Instant
 @Service
 class ProductionOrderService(
     private val orderRepository: ProductionOrderRepository,
+    private val requirementRepository: OrderRequirementRepository,
     private val recipeRepository: RecipeRepository,
+    private val recipeIngredientRepository: RecipeIngredientRepository,
     private val ingredientRepository: IngredientRepository,
     private val movementRepository: StockMovementRepository,
     private val stockService: StockService,
@@ -31,11 +37,12 @@ class ProductionOrderService(
     @Transactional(readOnly = true)
     fun list(status: OrderStatus?): List<OrderSummary> {
         val orders = if (status == null) {
-            orderRepository.findAllWithRecipe()
+            orderRepository.findAllByOrderByIdDesc()
         } else {
-            orderRepository.findAllWithRecipeByStatus(status)
+            orderRepository.findAllByStatusOrderByIdDesc(status)
         }
-        return orders.map { it.toSummary() }
+        val recipes = recipeRepository.findAllById(orders.map { it.recipeId }.toSet()).associateBy { it.id!! }
+        return orders.map { it.toSummary(recipes.getValue(it.recipeId)) }
     }
 
     @Transactional(readOnly = true)
@@ -48,18 +55,18 @@ class ProductionOrderService(
     @Transactional
     fun create(recipeId: Long, batches: Int): OrderDetail {
         require(batches in 1..MAX_BATCHES) { "Batches must be between 1 and $MAX_BATCHES" }
-        val recipe = recipeRepository.findByIdOrNull(recipeId)
-            ?: throw NotFoundException("Recipe $recipeId not found")
+        if (!recipeRepository.existsById(recipeId)) throw NotFoundException("Recipe $recipeId not found")
 
-        val order = ProductionOrder(recipe = recipe, batches = batches)
-        recipe.lines.forEach { line ->
-            order.requirements += OrderRequirement(
-                order = order,
-                ingredient = line.ingredient,
+        val order = orderRepository.save(ProductionOrder(recipeId = recipeId, batches = batches))
+        val requirements = recipeIngredientRepository.findAllForRecipe(recipeId).map { line ->
+            OrderRequirement(
+                orderId = order.id!!,
+                ingredientId = line.ingredientId,
                 requiredQuantity = line.quantityPerBatch * batches.toBigDecimal(),
             )
         }
-        return toDetail(orderRepository.save(order))
+        requirementRepository.saveAll(requirements)
+        return toDetail(order)
     }
 
     /**
@@ -70,23 +77,26 @@ class ProductionOrderService(
     fun release(orderId: Long): OrderDetail {
         val order = lockOrder(orderId)
         requireStatus(order, "release", OrderStatus.DRAFT)
-        ingredientRepository.lockAllRequiredBy(orderId)
+        val ingredients = lockIngredients(orderId)
+        val requirements = requirementRepository.findAllForOrder(orderId)
 
-        val shortages = order.requirements
-            .filter { it.ingredient.available < it.requiredQuantity }
-            .map {
-                Shortage(
-                    ingredientId = it.ingredient.id!!,
-                    ingredientName = it.ingredient.name,
-                    unit = it.ingredient.unit,
-                    required = it.requiredQuantity,
-                    available = it.ingredient.available,
-                    shortfall = it.requiredQuantity - it.ingredient.available,
-                )
-            }
+        val shortages = requirements.mapNotNull { requirement ->
+            val ingredient = ingredients.getValue(requirement.ingredientId)
+            if (ingredient.available >= requirement.requiredQuantity) return@mapNotNull null
+            Shortage(
+                ingredientId = requirement.ingredientId,
+                ingredientName = ingredient.name,
+                unit = ingredient.unit,
+                required = requirement.requiredQuantity,
+                available = ingredient.available,
+                shortfall = requirement.requiredQuantity - ingredient.available,
+            )
+        }
         if (shortages.isNotEmpty()) throw InsufficientStockException(orderId, shortages)
 
-        order.requirements.forEach { stockService.reserve(it.ingredient, order, it.requiredQuantity) }
+        requirements.forEach {
+            stockService.reserve(ingredients.getValue(it.ingredientId), orderId, it.requiredQuantity)
+        }
         order.status = OrderStatus.RELEASED
         order.releasedAt = Instant.now()
         return toDetail(order)
@@ -97,9 +107,11 @@ class ProductionOrderService(
     fun complete(orderId: Long): OrderDetail {
         val order = lockOrder(orderId)
         requireStatus(order, "complete", OrderStatus.RELEASED)
-        ingredientRepository.lockAllRequiredBy(orderId)
+        val ingredients = lockIngredients(orderId)
 
-        order.requirements.forEach { stockService.consume(it.ingredient, order, it.requiredQuantity) }
+        requirementRepository.findAllForOrder(orderId).forEach {
+            stockService.consume(ingredients.getValue(it.ingredientId), orderId, it.requiredQuantity)
+        }
         order.status = OrderStatus.COMPLETED
         order.completedAt = Instant.now()
         return toDetail(order)
@@ -112,8 +124,10 @@ class ProductionOrderService(
         requireStatus(order, "cancel", OrderStatus.DRAFT, OrderStatus.RELEASED)
 
         if (order.status == OrderStatus.RELEASED) {
-            ingredientRepository.lockAllRequiredBy(orderId)
-            order.requirements.forEach { stockService.unreserve(it.ingredient, order, it.requiredQuantity) }
+            val ingredients = lockIngredients(orderId)
+            requirementRepository.findAllForOrder(orderId).forEach {
+                stockService.unreserve(ingredients.getValue(it.ingredientId), orderId, it.requiredQuantity)
+            }
         }
         order.status = OrderStatus.CANCELLED
         order.cancelledAt = Instant.now()
@@ -123,12 +137,29 @@ class ProductionOrderService(
     private fun lockOrder(orderId: Long): ProductionOrder =
         orderRepository.findByIdForUpdate(orderId) ?: throw orderNotFound(orderId)
 
+    /** Locks the order's ingredient rows and returns them by id. */
+    private fun lockIngredients(orderId: Long): Map<Long, Ingredient> =
+        ingredientRepository.lockAllRequiredBy(orderId).associateBy { it.id!! }
+
     private fun requireStatus(order: ProductionOrder, action: String, vararg allowed: OrderStatus) {
         if (order.status !in allowed) throw InvalidOrderStatusException(order.id!!, order.status, action)
     }
 
-    private fun toDetail(order: ProductionOrder): OrderDetail =
-        order.toDetail(movementRepository.findAllForOrder(order.id!!).map { it.toView() })
+    private fun toDetail(order: ProductionOrder): OrderDetail {
+        val orderId = order.id!!
+        val recipe: Recipe = recipeRepository.findByIdOrNull(order.recipeId)
+            ?: throw NotFoundException("Recipe ${order.recipeId} not found")
+        val requirements = requirementRepository.findAllForOrder(orderId)
+        val movements = movementRepository.findAllForOrder(orderId)
+        val ingredientIds = requirements.map { it.ingredientId } + movements.map { it.ingredientId }
+        val ingredients = ingredientRepository.findAllById(ingredientIds.toSet()).associateBy { it.id!! }
+
+        return order.toDetail(
+            recipe = recipe,
+            requirements = requirements.map { it.toView(ingredients.getValue(it.ingredientId)) },
+            movements = movements.map { it.toView(ingredients.getValue(it.ingredientId)) },
+        )
+    }
 
     private fun orderNotFound(orderId: Long) = NotFoundException("Order PO-$orderId not found")
 
